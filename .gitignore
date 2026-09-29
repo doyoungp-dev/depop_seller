@@ -1,0 +1,34 @@
+# Everything personal stays out of the repo - this holds the software only, so it can be
+# published one day. Your photos, your grouping, your listings and your style live here on
+# your own computer and are carried between machines by copying the folders.
+product_image/
+description_style.md
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Secrets and local-only config
+.env
+.env.*
+.claude/settings.local.json
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+.chrome-profile/
+
+# macOS app icon built by setup.sh from depop_seller/static/icon.png
+Depop Seller.app/Contents/Resources/
+
+# Previous versions of description_style.md, written by the Style tab
+style_history/
+
+# Claude Code's local settings for whoever works on this - never shipped
+.claude/

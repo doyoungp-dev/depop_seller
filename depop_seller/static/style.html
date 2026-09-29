@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Depop Seller – Style</title>
+<link rel="icon" href="/icon.png">
+<link rel="stylesheet" href="/app.css">
+<style>
+  main { max-width: 940px; margin: 0 auto; }
+  #instruction { width: 100%; min-height: 76px; }
+  #style-text { width: 100%; min-height: 480px; font: 13px/1.65 var(--font-mono); background: var(--surface-2); }
+  .chars { font-size: 11.5px; color: var(--muted); text-align: right; margin-top: 6px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  .examples code {
+    cursor: pointer; font: 12.5px var(--font-sans); color: var(--text-2);
+    background: var(--surface-2); border: 1px solid var(--line); padding: 5px 11px; border-radius: 999px;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .examples code:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+  pre.diff {
+    font: 12px/1.55 var(--font-mono); background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 14px; overflow: auto; max-height: 360px; margin: 12px 0 0;
+  }
+  pre.diff .add { display: block; background: var(--success-soft); color: var(--success-text); }
+  pre.diff .del { display: block; background: var(--danger-soft); color: var(--danger-text); }
+  pre.diff .at { display: block; color: var(--muted); margin-top: 6px; }
+  table.hist { width: 100%; border-collapse: collapse; margin-top: 4px; }
+  table.hist td { padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  table.hist tr:last-child td { border-bottom: none; }
+  table.hist td.right { text-align: right; }
+</style>
+</head>
+<body>
+<div id="stale-banner" hidden></div>
+<header class="bar">
+  <a class="brand" href="/hub"><img src="/icon.png" alt=""> Depop Seller</a>
+  <nav class="tabs">
+    <a href="/hub" data-tab="batches">Batches</a>
+    <a href="/" data-tab="review">Review</a>
+    <a href="/sell" data-tab="sell">Sell</a>
+    <a href="/style" data-tab="style">Style</a>
+    <a href="/settings" data-tab="settings">Settings</a>
+  </nav>
+  <div class="actions"><span id="status" class="muted"></span><button id="btn-reload">Reload</button></div>
+</header>
+<main>
+  <div class="panel">
+    <h2>Change the style</h2>
+    <div class="muted">Say what should change from now on, in your own words. Claude Code reads the style,
+      applies it and shows you exactly what it changed - nothing is saved until you accept it. Every
+      description written after that follows the new style.</div>
+    <p style="margin:10px 0 6px"><textarea id="instruction" placeholder="From now on, ..."></textarea></p>
+    <div class="row">
+      <button class="primary" id="btn-apply">Ask Claude to apply it</button>
+      <span id="apply-note" class="note"></span>
+    </div>
+    <div class="examples">Try:
+      <code>From now on put the price guidance line at the end.</code>
+      <code>Add a Gilmore Girls winter hashtag group: #starshollow #snowday.</code>
+      <code>Stop using the word vintage in the first line unless the seller says so.</code>
+    </div>
+  </div>
+
+  <div class="panel" id="proposal" hidden>
+    <h2>Proposed change</h2>
+    <div id="summary"></div>
+    <pre class="diff" id="diff"></pre>
+    <p class="row end" style="margin:10px 0 0">
+      <button id="btn-discard">Discard</button>
+      <button class="success" id="btn-accept">Save this style</button>
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>The style itself</h2>
+    <div class="muted">This whole file is the prompt behind every description. Edit it directly if you prefer -
+      the template, the fields that always appear, the hashtag bank and the examples are all in here.</div>
+    <p style="margin:10px 0 0"><textarea id="style-text" spellcheck="false"></textarea></p>
+    <div class="chars" id="chars"></div>
+    <p class="row" style="margin:6px 0 0">
+      <button class="primary" id="btn-save">Save style</button>
+      <button id="btn-revert">Undo my edits</button>
+      <span id="save-note" class="note"></span>
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>Previous versions</h2>
+    <div class="muted">Every save keeps the version before it. Restoring one keeps the current version too.</div>
+    <table class="hist"><tbody id="history"></tbody></table>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+let S = null, saved = '';
+
+function syncTabs(active, batch, hasManifest) {
+  document.querySelectorAll('nav.tabs a').forEach(a => {
+    const tab = a.dataset.tab;
+    a.classList.toggle('active', tab === active);
+    if (tab === 'batches' || tab === 'style' || tab === 'settings') return;
+    a.href = (tab === 'review' ? '/' : '/sell') + (batch ? '?batch=' + encodeURIComponent(batch) : '');
+    a.classList.toggle('off', !batch || (tab === 'sell' && hasManifest === false));
+  });
+}
+
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const text = await res.text();
+  if (!res.ok) return { ok: false, error: text };
+  return { ok: true, data: text ? JSON.parse(text) : {} };
+}
+
+async function load() {
+  S = await (await fetch('/style/state')).json();
+  saved = S.text;
+  $('style-text').value = S.text;
+  showChars();
+  renderHistory();
+  if (!S.claude_code) {
+    $('btn-apply').disabled = true;
+    $('apply-note').className = 'note err';
+    $('apply-note').textContent = 'Claude Code was not found - run the Claude login launcher once.';
+  }
+  if (S.job && S.job.running) { running(true); pollStyle(); }
+  else if (S.job && S.job.markdown) showProposal(S.job);
+  const info = await (await fetch('/batches')).json();
+  const recent = info.batches[0];
+  syncTabs('style', recent && recent.name, recent && recent.has_manifest);
+}
+
+function showChars() {
+  const n = $('style-text').value.length;
+  const dirty = $('style-text').value !== saved;
+  $('chars').textContent = `${n} characters${dirty ? ' · unsaved edits' : ''}`;
+  $('btn-revert').hidden = !dirty;
+}
+
+function renderHistory() {
+  const body = $('history');
+  body.innerHTML = '';
+  if (!S.history.length) { body.appendChild(el('tr')).appendChild(el('td', 'muted', 'Nothing saved yet.')); return; }
+  S.history.forEach(h => {
+    const tr = el('tr');
+    tr.appendChild(el('td', null, h.when));
+    tr.appendChild(el('td', 'muted', `${h.chars} characters`));
+    const td = el('td', 'right');
+    const b = el('button', 'small', 'Restore');
+    b.onclick = async () => {
+      if (!confirm(`Bring back the style saved on ${h.when}?\n\nThe current one is kept as a version too.`)) return;
+      const r = await post('/style/restore', { name: h.name });
+      if (!r.ok) { note('save-note', r.error, true); return; }
+      await load();
+      note('save-note', 'Restored.', false);
+    };
+    td.appendChild(b);
+    tr.appendChild(td);
+    body.appendChild(tr);
+  });
+}
+
+function note(id, text, isError) {
+  const n = $(id);
+  n.className = 'note' + (isError ? ' err' : text ? ' ok' : '');
+  n.textContent = text || '';
+}
+
+// ---- ask Claude ---------------------------------------------------------------------
+
+function running(on) {
+  $('btn-apply').disabled = on;
+  note('apply-note', on ? 'Claude Code is rewriting the style (up to a minute)…' : '', false);
+  if (on) $('apply-note').className = 'note';
+}
+
+$('btn-apply').onclick = async () => {
+  const instruction = $('instruction').value.trim();
+  if (!instruction) { note('apply-note', 'Type what should change first.', true); return; }
+  $('proposal').hidden = true;
+  running(true);
+  const r = await post('/style/instruct', { instruction });
+  if (!r.ok) { running(false); note('apply-note', r.error, true); return; }
+  pollStyle();
+};
+
+async function pollStyle() {
+  const job = await (await fetch('/style/status')).json();
+  if (job.running) { setTimeout(pollStyle, 1500); return; }
+  running(false);
+  if (job.error) { note('apply-note', job.error, true); return; }
+  if (job.markdown) showProposal(job);
+}
+
+function showProposal(job) {
+  $('summary').textContent = job.summary || 'Claude Code rewrote the style.';
+  const pre = $('diff');
+  pre.innerHTML = '';
+  (job.diff || []).forEach(line => {
+    const cls = line.startsWith('+++') || line.startsWith('---') ? 'at'
+      : line.startsWith('@@') ? 'at' : line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : null;
+    pre.appendChild(el('span', cls, line || ' '));
+  });
+  $('proposal').hidden = false;
+  $('proposal').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+$('btn-discard').onclick = () => { $('proposal').hidden = true; note('apply-note', '', false); };
+
+$('btn-accept').onclick = async () => {
+  const job = await (await fetch('/style/status')).json();
+  if (!job.markdown) { note('apply-note', 'That proposal is gone - ask again.', true); return; }
+  const r = await post('/style/save', { text: job.markdown });
+  if (!r.ok) { note('apply-note', r.error, true); return; }
+  $('proposal').hidden = true;
+  $('instruction').value = '';
+  await load();
+  note('save-note', 'Saved - every description from now on uses it.', false);
+};
+
+// ---- edit it directly ---------------------------------------------------------------
+
+$('style-text').oninput = showChars;
+$('btn-revert').onclick = () => { $('style-text').value = saved; showChars(); note('save-note', '', false); };
+$('btn-save').onclick = async () => {
+  const r = await post('/style/save', { text: $('style-text').value });
+  if (!r.ok) { note('save-note', r.error, true); return; }
+  await load();
+  note('save-note', 'Saved - every description from now on uses it.', false);
+};
+// the example chips fill the instruction box, ready to send or adapt
+document.querySelectorAll('.examples code').forEach(chip => {
+  chip.title = 'Use this example';
+  chip.onclick = () => { $('instruction').value = chip.textContent; $('instruction').focus(); };
+});
+
+$('btn-reload').onclick = load;
+load();
+
+// ---- closing the window closes the app ----------------------------------------------
+// Moving between tabs also unloads the page, so the server waits a few seconds and stays up if
+// another page of the app turns up, or if it is still grouping, drafting or feeding Depop.
+window.addEventListener('pagehide', (e) => {
+  if (!e.persisted) navigator.sendBeacon('/closing');
+});
+
+// ---- the app was updated while it was running ---------------------------------------
+// The pages come from disk on every request, but the routes live in the running process: after an
+// update you can be looking at a new page that the old server cannot serve. A server old enough to
+// have no /version at all is stale by definition, so a 404 here counts as "restart me" too.
+async function checkVersion() {
+  let stale = false, since = '', platform = '';
+  try {
+    const res = await fetch('/version');
+    if (res.ok) { const v = await res.json(); stale = v.stale; since = v.started; platform = v.platform; }
+    else { stale = true; }
+  } catch (e) { return; }                       // server gone: the page has bigger problems
+  if (!stale) return;
+
+  const reopen = platform === 'mac'
+    ? 'open Depop Seller again from the Dock or the folder'
+    : 'open Depop Seller again from your desktop icon';
+  const b = document.getElementById('stale-banner');
+  b.textContent = '';
+  const msg = document.createElement('span');
+  msg.textContent = 'Depop Seller has been updated'
+    + (since ? ` (this one has been running since ${since})` : '')
+    + '. Close it and open it again, or the newest tabs and buttons will not work.';
+  const btn = document.createElement('button');
+  btn.textContent = 'Close it now';
+  btn.style.cssText = 'font:inherit;padding:3px 10px;border:1px solid #fcd34d;border-radius:6px;background:#fff;cursor:pointer';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { await fetch('/quit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
+    catch (e) { /* the server dies mid-answer, which is the point */ }
+    document.body.innerHTML = '<div style="padding:60px;text-align:center;font:16px system-ui;color:#71717a">'
+      + 'Depop Seller is closed.<br><br>Now ' + reopen + '.</div>';
+  };
+  b.append(msg, btn);
+  b.hidden = false;
+}
+checkVersion();
+</script>
+</body>
+</html>

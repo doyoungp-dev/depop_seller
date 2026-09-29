@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Depop Seller – Sell</title>
+<link rel="icon" href="/icon.png">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .list-tools {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    margin: 0 0 16px; padding: 10px 14px; border-radius: var(--radius);
+    background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+    font-size: 13px; color: var(--text-2);
+  }
+  .list-tools > span:first-child { font-weight: 600; color: var(--text); margin-right: 2px; }
+  .list-tools button.chip {
+    border-radius: 999px; padding: 5px 13px; box-shadow: none;
+    background: var(--surface-2); border-color: var(--line); color: var(--text-2);
+  }
+  .list-tools button.chip:hover { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+  .list-tools .sel-count { margin-left: auto; color: var(--muted); }
+  .list-tools .sel-count b { color: var(--text); }
+
+  .item {
+    display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 24px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 20px 18px; margin-bottom: 14px; box-shadow: var(--shadow);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .item.selected { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring), var(--shadow); }
+  .item.listed { background: #fcfdfc; }
+  .item.listed .photos img { opacity: .8; }
+  .item h2 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; font: 600 19px/1.3 var(--font-display); }
+  .item h2 .count { font: 13px var(--font-sans); color: var(--muted); }
+  .item h2 label.pick { display: inline-flex; padding: 2px; margin-right: 2px; }
+
+  .photos { display: flex; flex-wrap: wrap; gap: 8px; padding: 3px; border-radius: 13px; min-height: 44px; }
+  .photos.over { background: var(--primary-soft); }
+  .photos.drop-end::after { content: ''; width: 4px; background: var(--primary); border-radius: 2px; align-self: stretch; }
+  .photos img {
+    width: 118px; height: 118px; object-fit: contain; display: block; border-radius: 12px;
+    background: var(--surface-3); cursor: zoom-in; -webkit-user-drag: none; transition: box-shadow .15s;
+  }
+  .ph { position: relative; cursor: grab; }
+  .ph:hover img { box-shadow: var(--shadow-lift); }
+  .ph.dragging { opacity: .35; }
+  .ph.drop-before { box-shadow: -7px 0 0 -4px var(--primary); border-radius: 12px; }
+  .ph .n {
+    position: absolute; top: 6px; left: 6px; pointer-events: none;
+    font-size: 11px; font-weight: 600; color: #fff; background: rgba(43, 36, 32, .7);
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .ph .v { font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 3px; }
+
+  h3.divider {
+    display: flex; align-items: center; gap: 12px; margin: 32px 0 14px;
+    font: 600 12px var(--font-sans); letter-spacing: .7px; text-transform: uppercase; color: var(--muted);
+  }
+  h3.divider::after { content: ''; flex: 1; height: 1px; background: var(--line-strong); }
+
+  .side { display: flex; flex-direction: column; gap: 10px; }
+  .side textarea { width: 100%; min-height: 104px; font-size: 13.5px; }
+  .side input[type=text] { width: 100%; font-size: 13.5px; }
+  .facts { display: flex; flex-direction: column; gap: 8px; }
+  .facts button { align-self: flex-start; }
+  .job { font-size: 12.5px; color: var(--muted); min-height: 16px; }
+  .job.err { color: var(--danger-text); }
+  .over { color: var(--warn-text); font-size: 12.5px; }
+  .meta { font-size: 12.5px; color: var(--muted); }
+  .meta.ok { color: var(--success-text); }
+  .missing { font-size: 12.5px; color: var(--warn-text); }
+  .chars { font-size: 11.5px; color: var(--muted); text-align: right; margin-top: -4px; }
+  .chars.over { color: var(--danger-text); }
+  #ext-version { font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div id="stale-banner" hidden></div>
+<header class="bar">
+  <a class="brand" href="/hub"><img src="/icon.png" alt=""> Depop Seller</a>
+  <nav class="tabs">
+    <a href="/hub" data-tab="batches">Batches</a>
+    <a href="/" data-tab="review">Review</a>
+    <a href="/sell" data-tab="sell">Sell</a>
+    <a href="/style" data-tab="style">Style</a>
+    <a href="/settings" data-tab="settings">Settings</a>
+  </nav>
+  <div class="title"><select id="batch-select"></select></div>
+  <div id="summary" class="muted"></div>
+  <div id="ext-version" class="muted"></div>
+  <div class="actions">
+    <button id="btn-gen-selected" class="primary" disabled title="Write descriptions for the items you have ticked">Generate Selected Descriptions</button>
+    <button id="btn-reload">Reload</button>
+  </div>
+</header>
+<main>
+  <div class="help" id="help-ext" hidden>
+    <b>Depop</b> opens Depop's <i>List an item</i> page in a new tab of this browser, and the helper extension adds the
+    item's photos there in the order shown (photo 1 = cover). Nothing is posted: you fill in the rest and press Post
+    yourself. If Depop asks you to log in first, the photos are added as soon as the form appears.
+    <b>Drag</b> a photo to change the order (saved to the manifest at once); <b>click</b> one to see it large.
+    Tick <b>Listed</b> when you've posted an item - listed items move to the bottom of the page.
+    <b>Descriptions:</b> type the facts you'd normally give Claude (brand, size, condition, flaws, measurements) in the
+    small box and click <b>Generate Description</b> - or tick several items and use <b>Generate Selected Descriptions</b>
+    at the top. The text follows your house style from the Style tab, and anything not known becomes a
+    <code>[placeholder]</code>. Edit freely - the box is what gets pasted into Depop together with the photos.
+    Descriptions are written by Claude on your own subscription, never the paid API.
+  </div>
+  <div class="help" id="help-noext" hidden>
+    <b>One-time setup - install the helper extension (2 minutes).</b> It lets this page add photos to Depop inside your
+    own Chrome, so there is no separate login and nothing for Depop to block.
+    <ol style="margin:6px 0 0 18px">
+      <li>Open a new tab at <code>chrome://extensions</code> and switch on <b>Developer mode</b> (top right).</li>
+      <li>Click <b>Load unpacked</b> and choose the folder <code id="ext-dir"></code>.</li>
+      <li>Come back here and click <b>Reload</b>. The buttons turn red when the helper is detected.</li>
+    </ol>
+    Until then the button falls back to opening a separate automated Chrome window, which Depop may block.
+  </div>
+  <div class="list-tools" id="list-tools" hidden>
+    <span>Select</span>
+    <button class="small chip" id="sel-all">All</button>
+    <button class="small chip" id="sel-missing">Without a description</button>
+    <button class="small chip" id="sel-none">None</button>
+    <span class="sel-count" id="sel-count">Tick items, then Generate Selected Descriptions</span>
+  </div>
+  <div id="items"></div>
+</main>
+<div id="lightbox" hidden>
+  <button class="close" title="Close (Esc)">&#x2715;</button>
+  <button class="nav prev" title="Previous (&larr;)">&#x2039;</button>
+  <img id="lb-img" alt="">
+  <button class="nav next" title="Next (&rarr;)">&#x203A;</button>
+  <div class="lb-cap">
+    <span id="lb-text"></span>
+    <button id="lb-cover" class="small" title="Make this photo the cover (photo 1)">Make cover</button>
+  </div>
+</div>
+<script>
+let B = null, S = null, INFO = null;
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const q = (path) => path + (path.includes('?') ? '&' : '?') + 'batch=' + encodeURIComponent(B);
+const post = (path, body) => fetch(q(path), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+
+
+// ---- one app, three tabs -----------------------------------------------------------
+function syncTabs(active, batch, hasManifest) {
+  document.querySelectorAll('nav.tabs a').forEach(a => {
+    const tab = a.dataset.tab;
+    a.classList.toggle('active', tab === active);
+    if (tab === 'batches' || tab === 'style' || tab === 'settings') return;
+    a.href = (tab === 'review' ? '/' : '/sell') + (batch ? '?batch=' + encodeURIComponent(batch) : '');
+    a.classList.toggle('off', !batch || (tab === 'sell' && hasManifest === false));
+  });
+}
+
+async function loadBatches() {
+  INFO = await (await fetch('/batches')).json();
+  const sel = $('batch-select');
+  sel.innerHTML = '';
+  INFO.batches.filter(b => b.has_manifest).forEach(b => {
+    const o = el('option', null, `${b.name} · ${b.photos} photos`); o.value = b.name; sel.appendChild(o);
+  });
+  const wanted = new URLSearchParams(location.search).get('batch');
+  B = [...sel.options].some(o => o.value === wanted) ? wanted : (sel.options[0] || {}).value;
+  if (B) { sel.value = B; history.replaceState(null, '', '?batch=' + encodeURIComponent(B)); }
+  syncTabs('sell', B, true);
+}
+$('batch-select').onchange = async () => {
+  B = $('batch-select').value;
+  SELECTED.clear();                                  // item numbers repeat between batches
+  history.replaceState(null, '', '?batch=' + encodeURIComponent(B));
+  syncTabs('sell', B, true);
+  await load();
+};
+
+async function load() {
+  if (!B) { $('summary').textContent = 'No reviewed batch found - group and review a batch first.'; return; }
+  const res = await fetch(q('/sell/state'));
+  if (!res.ok) { $('summary').textContent = await res.text(); return; }
+  S = await res.json();
+  render();
+}
+
+// ---- which items are ticked -------------------------------------------------------------
+// Kept outside the cards: cards are redrawn while descriptions are being written, and a tick
+// must survive that.
+const SELECTED = new Set();
+
+function updateSelection() {
+  const ids = new Set(S ? S.items.map(i => i.id) : []);
+  [...SELECTED].forEach(id => { if (!ids.has(id)) SELECTED.delete(id); });   // gone after a batch switch
+  const n = SELECTED.size;
+  const btn = $('btn-gen-selected');
+  btn.disabled = n === 0;
+  btn.textContent = n ? `Generate Selected Descriptions (${n})` : 'Generate Selected Descriptions';
+  $('sel-count').innerHTML = n ? `<b>${n}</b> selected` : 'Tick items, then Generate Selected Descriptions';
+  $('list-tools').hidden = !(S && S.items.length);
+  document.querySelectorAll('section.item').forEach(node => {
+    const on = SELECTED.has(Number(node.dataset.id));
+    node.classList.toggle('selected', on);
+    const box = node.querySelector('label.pick input');
+    if (box) box.checked = on;
+  });
+}
+
+function render() {
+  showHelp();
+  const main = $('items');
+  main.innerHTML = '';
+  const todo = S.items.filter(i => i.status !== 'listed');
+  const done = S.items.filter(i => i.status === 'listed');
+  $('summary').textContent = `${S.items.length} items · ${done.length} listed · ${todo.length} to go`;
+  todo.forEach(it => main.appendChild(card(it)));
+  if (done.length) {
+    main.appendChild(el('h3', 'divider', `Listed on Depop (${done.length})`));
+    done.forEach(it => main.appendChild(card(it)));
+  }
+  updateSelection();
+}
+
+// What a card shows, so a refresh can redraw only the cards that actually changed.
+function snapshot(it) {
+  return JSON.stringify([it.status, it.description, it.facts, it.depop_url, it.draft, it.photos.map(p => p.seq)]);
+}
+
+// While descriptions are being written: redraw changed cards only, and never one being typed in
+// (it gets its turn on the next refresh, once the cursor has left it).
+async function refresh() {
+  const res = await fetch(q('/sell/state'));
+  if (!res.ok) return;
+  const next = await res.json();
+  const before = S ? new Map(S.items.map(i => [i.id, i.status])) : new Map();
+  S = next;
+  const reordered = next.items.length !== before.size || next.items.some(i => before.get(i.id) !== i.status);
+  if (reordered) { render(); return; }                    // listed/unlisted moves cards around
+  for (const it of next.items) {
+    const node = $('item-' + it.id);
+    if (!node || node.dataset.snap === snapshot(it) || node.contains(document.activeElement)) continue;
+    node.replaceWith(card(it));
+  }
+  updateSelection();
+}
+
+function card(it) {
+  const c = el('section', 'item' + (it.status === 'listed' ? ' listed' : '') + (SELECTED.has(it.id) ? ' selected' : ''));
+  c.id = 'item-' + it.id;
+  c.dataset.id = it.id;
+  c.dataset.snap = snapshot(it);
+  const left = el('div');
+  const h = el('h2');
+  const pick = el('label', 'pick');
+  pick.title = 'Tick to include in Generate Selected Descriptions';
+  const box = el('input'); box.type = 'checkbox'; box.checked = SELECTED.has(it.id);
+  box.onchange = () => { box.checked ? SELECTED.add(it.id) : SELECTED.delete(it.id); updateSelection(); };
+  pick.appendChild(box);
+  h.appendChild(pick);
+  h.appendChild(el('span', null, `Item ${it.id}`));
+  h.appendChild(el('span', 'pill ' + it.status, it.status === 'sorted' ? 'not listed' : it.status));
+  h.appendChild(el('span', 'count', `${it.photos.length} photo${it.photos.length === 1 ? '' : 's'}`));
+  if (it.photos.length > S.max_photos) h.appendChild(el('span', 'over', `⚠ only the first ${S.max_photos} will be uploaded`));
+  left.appendChild(h);
+  const ph = el('div', 'photos');
+  it.photos.forEach((p, i) => ph.appendChild(tile(it, p, i)));
+  bindReorder(ph, it);
+  left.appendChild(ph);
+
+  const side = el('div', 'side');
+  const btn = el('button', hasExtension() ? 'depop' : '', 'Depop');
+  const job = el('div', 'job');
+  btn.onclick = async () => {
+    if (hasExtension()) { openViaExtension(it, job); return; }
+    btn.disabled = true;
+    job.className = 'job'; job.textContent = 'Starting the automated window…';
+    const res = await post(`/sell/open?item=${it.id}`);
+    if (!res.ok) { job.className = 'job err'; job.textContent = await res.text(); btn.disabled = false; return; }
+    pollJob(it.id, job, btn);
+  };
+  side.appendChild(btn);
+  side.appendChild(job);
+  if (it.job && it.job.running) { btn.disabled = true; pollJob(it.id, job, btn); }
+  else if (it.job && it.job.phase && it.job.phase !== 'idle') { job.textContent = it.job.error ? 'Failed: ' + it.job.error : it.job.phase; if (it.job.error) job.className = 'job err'; }
+
+  const factsRow = el('div', 'facts');
+  const facts = el('input'); facts.type = 'text'; facts.placeholder = 'Facts: brand, size, condition, flaws, measurements'; facts.value = it.facts || '';
+  facts.onchange = async () => { await post(`/sell/item?item=${it.id}`, { facts: facts.value }); };
+  const draftBtn = el('button', 'draft small', 'Generate Description');
+  const draftStatus = el('div', 'meta');
+  draftBtn.onclick = async () => {
+    if (!S.claude_code) { draftStatus.textContent = NO_CLAUDE; draftStatus.className = 'missing'; return; }
+    if ((it.description || '').trim() && !confirm(`Item ${it.id} already has a description. Replace it with a new one?`)) return;
+    draftBtn.disabled = true; draftStatus.className = 'meta'; draftStatus.textContent = WRITING;
+    const res = await post('/sell/describe', { items: [it.id], facts: { [it.id]: facts.value } });
+    if (!res.ok) { draftStatus.className = 'missing'; draftStatus.textContent = await res.text(); draftBtn.disabled = false; return; }
+    pollDraft();
+  };
+  factsRow.append(facts, draftBtn);
+  side.appendChild(factsRow);
+
+  const desc = el('textarea'); desc.placeholder = 'Description - pasted into Depop together with the photos'; desc.value = it.description || '';
+  desc.rows = Math.min(14, Math.max(4, (it.description || '').split('\n').length + 1));
+  const chars = el('div', 'chars');
+  const showChars = () => { chars.textContent = `${desc.value.length} / 1000`; chars.className = desc.value.length > 1000 ? 'chars over' : 'chars'; };
+  showChars();
+  desc.oninput = showChars;
+  desc.onchange = async () => { await post(`/sell/item?item=${it.id}`, { description: desc.value }); };
+  side.appendChild(desc);
+  side.appendChild(chars);
+  side.appendChild(draftStatus);
+  if (it.draft && it.draft.running) { draftBtn.disabled = true; draftStatus.textContent = it.draft.queued ? WAITING : WRITING; pollDraft(); }
+  else if (it.draft && it.draft.error) { draftStatus.className = 'missing'; draftStatus.textContent = 'Could not write it: ' + it.draft.error; }
+  else if (it.draft && it.draft.engine) { draftStatus.className = 'meta ok'; draftStatus.textContent = WRITTEN; }
+
+  const url = el('input'); url.type = 'text'; url.placeholder = 'Depop listing URL (optional)'; url.value = it.depop_url || '';
+  url.onchange = async () => { await post(`/sell/item?item=${it.id}`, { depop_url: url.value }); };
+  side.appendChild(url);
+
+  const lab = el('label', 'chk');
+  const chk = el('input'); chk.type = 'checkbox'; chk.checked = it.status === 'listed';
+  chk.onchange = async () => { await post(`/sell/item?item=${it.id}`, { status: chk.checked ? 'listed' : 'opened' }); await load(); };
+  lab.append(chk, document.createTextNode('Listed on Depop'));
+  side.appendChild(lab);
+
+  c.append(left, side);
+  return c;
+}
+
+// ---- photo tiles: drag to reorder, click to zoom ---------------------------------
+
+let drag = null;   // { item, seq } while a tile is being dragged
+
+function tile(it, p, i) {
+  const w = el('div', 'ph');
+  w.draggable = true;
+  w.dataset.seq = p.seq;
+  w.title = 'Drag to change the order · click to enlarge';
+  const img = el('img'); img.loading = 'lazy'; img.src = q('/thumbs/' + encodeURIComponent(p.stem) + '.jpg'); img.alt = p.file;
+  img.onclick = () => openLightbox(it, i);
+  w.appendChild(img);
+  w.appendChild(el('span', 'n', i === 0 ? '1 cover' : String(i + 1)));
+  w.appendChild(el('div', 'v', p.view));
+  if (i >= S.max_photos) w.style.opacity = '.4';
+  w.addEventListener('dragstart', (e) => {
+    drag = { item: it.id, seq: p.seq };
+    w.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(p.seq));
+  });
+  w.addEventListener('dragend', () => { w.classList.remove('dragging'); clearMarkers(); drag = null; });
+  return w;
+}
+
+function insertionIndex(listEl, x, y) {
+  let idx = 0;
+  for (const t of listEl.querySelectorAll('.ph:not(.dragging)')) {
+    const r = t.getBoundingClientRect();
+    if (y > r.bottom) idx++;
+    else if (y >= r.top && x > r.left + r.width / 2) idx++;
+  }
+  return idx;
+}
+
+function clearMarkers() {
+  document.querySelectorAll('.drop-before').forEach(e => e.classList.remove('drop-before'));
+  document.querySelectorAll('.drop-end, .photos.over').forEach(e => e.classList.remove('drop-end', 'over'));
+}
+
+function showMarker(listEl, idx) {
+  clearMarkers();
+  listEl.classList.add('over');
+  const tiles = listEl.querySelectorAll('.ph:not(.dragging)');
+  if (idx < tiles.length) tiles[idx].classList.add('drop-before');
+  else listEl.classList.add('drop-end');
+}
+
+// Photos move only inside their own item here; regrouping is the review page's job.
+function bindReorder(listEl, it) {
+  listEl.addEventListener('dragover', (e) => {
+    if (!drag || drag.item !== it.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    showMarker(listEl, insertionIndex(listEl, e.clientX, e.clientY));
+  });
+  listEl.addEventListener('dragleave', (e) => { if (!listEl.contains(e.relatedTarget)) clearMarkers(); });
+  listEl.addEventListener('drop', (e) => {
+    if (!drag || drag.item !== it.id) return;
+    e.preventDefault();
+    const idx = insertionIndex(listEl, e.clientX, e.clientY);
+    clearMarkers();
+    const seqs = it.photos.map(p => p.seq).filter(s => s !== drag.seq);
+    seqs.splice(idx, 0, drag.seq);
+    reorder(it, seqs);
+  });
+}
+
+async function reorder(it, seqs) {
+  if (seqs.join() === it.photos.map(p => p.seq).join()) return;
+  const res = await post(`/sell/reorder?item=${it.id}`, { seqs });
+  if (!res.ok) { alert('Could not save the new order: ' + await res.text()); await load(); return; }
+  it.photos = (await res.json()).photos;                     // the manifest is written; refresh this card only
+  const old = $('item-' + it.id);
+  old.replaceWith(card(it));
+}
+
+// ---- lightbox ---------------------------------------------------------------------
+
+let LB = null;   // { it, i } currently shown
+
+function openLightbox(it, i) {
+  const p = it.photos[i];
+  LB = { it, i };
+  const img = $('lb-img');
+  img.src = q('/thumbs/' + encodeURIComponent(p.stem) + '.jpg');       // instant, from cache
+  const big = new Image();
+  big.onload = () => { if (LB && LB.it === it && LB.i === i) img.src = big.src; };
+  big.src = q('/large/' + encodeURIComponent(p.stem) + '.jpg');           // converted on first use
+  $('lb-text').textContent = `Item ${it.id} · photo ${i + 1} of ${it.photos.length}${i === 0 ? ' (cover)' : ''} · ${p.view} · ${p.file}`;
+  $('lb-cover').hidden = i === 0;
+  $('lightbox').hidden = false;
+}
+
+function closeLightbox() { $('lightbox').hidden = true; LB = null; }
+
+function stepLightbox(delta) {
+  if (!LB) return;
+  const n = LB.it.photos.length;
+  openLightbox(LB.it, (LB.i + delta + n) % n);
+}
+
+$('lightbox').querySelector('.close').onclick = closeLightbox;
+$('lightbox').querySelector('.prev').onclick = () => stepLightbox(-1);
+$('lightbox').querySelector('.next').onclick = () => stepLightbox(1);
+$('lightbox').addEventListener('click', (e) => { if (e.target === $('lightbox')) closeLightbox(); });
+$('lb-cover').onclick = async () => {
+  if (!LB || LB.i === 0) return;
+  const { it, i } = LB;
+  const seqs = it.photos.map(p => p.seq);
+  seqs.unshift(seqs.splice(i, 1)[0]);
+  await reorder(it, seqs);
+  openLightbox(it, 0);
+};
+document.addEventListener('keydown', (e) => {
+  if (!LB) return;
+  if (e.key === 'Escape') closeLightbox();
+  else if (e.key === 'ArrowLeft') stepLightbox(-1);
+  else if (e.key === 'ArrowRight') stepLightbox(1);
+});
+
+// ---- helper extension -----------------------------------------------------------
+
+function hasExtension() { return !!document.documentElement.dataset.depopSellerExt; }
+
+function openViaExtension(it, job) {
+  job.className = 'job'; job.textContent = 'Handing over to the helper extension…';
+  const onStored = (event) => {
+    if (event.source !== window || !event.data || event.data.type !== 'depop-seller:stored' || event.data.item !== it.id) return;
+    window.removeEventListener('message', onStored);
+    window.open('https://www.depop.com/products/create/', '_blank');
+    job.textContent = `Depop opened in a new tab - the photos are added there once the form shows (item ${it.id}).`;
+    const pill = document.querySelector(`#item-${it.id} .pill`);
+    if (pill && pill.textContent === 'not listed') { pill.textContent = 'opened'; pill.className = 'pill opened'; }
+  };
+  window.addEventListener('message', onStored);
+  window.postMessage({ type: 'depop-seller:open', batch: B, item: it.id, server: location.origin }, '*');
+}
+
+const HELPER_VERSION = '1.1';   // bump together with chrome_extension/manifest.json
+
+function showHelp() {
+  const ext = hasExtension();
+  $('help-ext').hidden = !ext;
+  $('help-noext').hidden = ext;
+  if (INFO && INFO.extension_dir) $('ext-dir').textContent = INFO.extension_dir;
+  const v = document.documentElement.dataset.depopSellerExt;
+  const ev = $('ext-version');
+  if (!ext) ev.textContent = '';
+  else if (v !== HELPER_VERSION) { ev.textContent = `helper v${v} is out of date - open chrome://extensions, press reload on "Depop Seller helper", then Reload here`; ev.className = 'missing'; }
+  else { ev.textContent = `helper v${v}`; ev.className = 'muted'; }
+}
+
+// ---- writing descriptions -------------------------------------------------------------
+
+const WRITING = 'Writing the description…';
+const WAITING = 'Waiting its turn…';
+const WRITTEN = 'Written by Claude on your subscription';
+const NO_CLAUDE = 'Descriptions need the Claude app - see the Settings tab.';
+
+let draftPoll = null;
+function pollDraft() {
+  if (draftPoll) return;                       // one poller keeps every card up to date
+  draftPoll = setInterval(async () => {
+    const st = await (await fetch(q('/sell/describe/status'))).json();
+    const running = Object.values(st).some(x => x && x.running);
+    if (!running) { clearInterval(draftPoll); draftPoll = null; }
+    await refresh();
+  }, 2500);
+}
+
+function factsFor(id) {
+  const box = document.querySelector(`#item-${id} .facts input`);
+  if (box) return box.value;
+  const it = S.items.find(i => i.id === id);
+  return it ? it.facts || '' : '';
+}
+
+$('btn-gen-selected').onclick = async () => {
+  if (!S.claude_code) { alert(NO_CLAUDE); return; }
+  const chosen = S.items.filter(i => SELECTED.has(i.id));
+  const todo = chosen.filter(i => !(i.draft && i.draft.running));
+  if (!todo.length) { alert('The selected items are already being written.'); return; }
+  const replacing = todo.filter(i => (i.description || '').trim()).length;
+  let msg = `Write descriptions for ${todo.length} item${todo.length === 1 ? '' : 's'}?`
+    + `\n\nThis uses your Claude subscription - no extra charge - and takes about 20 seconds each.`;
+  if (replacing) msg += `\n\n${replacing} of them already ${replacing === 1 ? 'has a description' : 'have descriptions'}, which will be replaced.`;
+  if (!confirm(msg)) return;
+  const facts = {};
+  todo.forEach(i => { facts[i.id] = factsFor(i.id); });
+  const res = await post('/sell/describe', { items: todo.map(i => i.id), facts });
+  if (!res.ok) { alert(await res.text()); return; }
+  SELECTED.clear();
+  await refresh();
+  pollDraft();
+};
+
+$('sel-all').onclick = () => { S.items.forEach(i => SELECTED.add(i.id)); updateSelection(); };
+$('sel-missing').onclick = () => {
+  SELECTED.clear();
+  S.items.filter(i => !(i.description || '').trim()).forEach(i => SELECTED.add(i.id));
+  updateSelection();
+};
+$('sel-none').onclick = () => { SELECTED.clear(); updateSelection(); };
+
+async function pollJob(itemId, job, btn) {
+  const st = await (await fetch(q(`/sell/status?item=${itemId}`))).json();
+  if (st.running) {
+    job.className = 'job';
+    job.textContent = st.phase + (st.uploaded ? ` (${st.uploaded} uploaded)` : '');
+    setTimeout(() => pollJob(itemId, job, btn), 1000);
+  } else {
+    btn.disabled = false;
+    job.className = st.error ? 'job err' : 'job';
+    job.textContent = st.error ? 'Failed: ' + st.error : (st.phase || 'done');
+    if (!st.error) { const pill = document.querySelector(`#item-${itemId} .pill`); if (pill && pill.textContent === 'not listed') { pill.textContent = 'opened'; pill.className = 'pill opened'; } }
+  }
+}
+
+$('btn-reload').onclick = load;
+(async () => { await loadBatches(); await load(); })();
+
+// ---- closing the window closes the app ----------------------------------------------
+// Moving between tabs also unloads the page, so the server waits a few seconds and stays up if
+// another page of the app turns up, or if it is still grouping, drafting or feeding Depop.
+window.addEventListener('pagehide', (e) => {
+  if (!e.persisted) navigator.sendBeacon('/closing');
+});
+
+// ---- the app was updated while it was running ---------------------------------------
+// The pages come from disk on every request, but the routes live in the running process: after an
+// update you can be looking at a new page that the old server cannot serve. A server old enough to
+// have no /version at all is stale by definition, so a 404 here counts as "restart me" too.
+async function checkVersion() {
+  let stale = false, since = '', platform = '';
+  try {
+    const res = await fetch('/version');
+    if (res.ok) { const v = await res.json(); stale = v.stale; since = v.started; platform = v.platform; }
+    else { stale = true; }
+  } catch (e) { return; }                       // server gone: the page has bigger problems
+  if (!stale) return;
+
+  const reopen = platform === 'mac'
+    ? 'open Depop Seller again from the Dock or the folder'
+    : 'open Depop Seller again from your desktop icon';
+  const b = document.getElementById('stale-banner');
+  b.textContent = '';
+  const msg = document.createElement('span');
+  msg.textContent = 'Depop Seller has been updated'
+    + (since ? ` (this one has been running since ${since})` : '')
+    + '. Close it and open it again, or the newest tabs and buttons will not work.';
+  const btn = document.createElement('button');
+  btn.textContent = 'Close it now';
+  btn.style.cssText = 'font:inherit;padding:3px 10px;border:1px solid #fcd34d;border-radius:6px;background:#fff;cursor:pointer';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { await fetch('/quit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
+    catch (e) { /* the server dies mid-answer, which is the point */ }
+    document.body.innerHTML = '<div style="padding:60px;text-align:center;font:16px system-ui;color:#71717a">'
+      + 'Depop Seller is closed.<br><br>Now ' + reopen + '.</div>';
+  };
+  b.append(msg, btn);
+  b.hidden = false;
+}
+checkVersion();
+</script>
+</body>
+</html>

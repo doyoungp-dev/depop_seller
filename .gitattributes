@@ -1,0 +1,10 @@
+# Keep text files LF in the repo and the working copy (silences Git-for-Windows CRLF warnings).
+* text=auto eol=lf
+
+# Never touch binaries.
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.heic binary
+*.HEIC binary
+*.db   binary

@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Depop Seller – Settings</title>
+<link rel="icon" href="/icon.png">
+<link rel="stylesheet" href="/app.css">
+<style>
+  main { max-width: 880px; margin: 0 auto; }
+  .panel input[type=password], .panel input[type=text] { flex: 1; min-width: 260px; }
+  ol { margin: 8px 0 0; padding-left: 20px; color: var(--text-2); }
+  li { margin-bottom: 6px; }
+  table.paths { width: 100%; border-collapse: collapse; }
+  table.paths td { padding: 11px 0; border-bottom: 1px solid var(--line); vertical-align: top; font-size: 13px; }
+  table.paths tr:last-child td { border-bottom: none; }
+  table.paths td.k { color: var(--muted); width: 120px; white-space: nowrap; }
+  table.paths td.v { word-break: break-all; }
+  table.paths td.b { width: 70px; text-align: right; }
+  #data-dir { font-size: 13px; padding: 6px 10px; }
+  .release-notes { margin-top: 12px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 10px; font-size: 13px; color: var(--text-2); white-space: pre-wrap; max-height: 220px; overflow: auto; }
+  .release-notes::before { content: "What's new"; display: block; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .sign-in { margin-top: 12px; padding: 12px 14px; background: var(--primary-soft); border-radius: 10px; font-size: 13.5px; }
+  .sign-in .row { margin-top: 8px; }
+  .sign-in input[type=text] { flex: 1; min-width: 220px; }
+  .row.later { margin-top: 12px; }
+  .note.inline { margin: 0; }
+</style>
+</head>
+<body>
+<div id="stale-banner" hidden></div>
+<header class="bar">
+  <a class="brand" href="/hub"><img src="/icon.png" alt=""> Depop Seller</a>
+  <nav class="tabs">
+    <a href="/hub" data-tab="batches">Batches</a>
+    <a href="/" data-tab="review">Review</a>
+    <a href="/sell" data-tab="sell">Sell</a>
+    <a href="/style" data-tab="style">Style</a>
+    <a href="/settings" data-tab="settings">Settings</a>
+  </nav>
+  <div class="actions"><button id="btn-reload">Reload</button></div>
+</header>
+<main>
+  <div class="panel">
+    <h2>Anthropic API key <span class="pill" id="key-pill">checking…</span></h2>
+    <div class="why">Pays for <b>grouping photos into items</b> - the one step that uses the paid API, about
+      $2.50 for 440 photos. Descriptions do not use it. The key is kept in a file on this computer
+      (<code id="env-file"></code>), never sent anywhere but Anthropic, and is never shown back to you in full.</div>
+    <div class="row">
+      <input type="password" id="key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+      <button class="primary" id="btn-key-save">Save key</button>
+      <button id="btn-key-test">Test</button>
+    </div>
+    <div class="note" id="key-note"></div>
+    <div class="note" id="key-env" hidden></div>
+    <div class="note">No key yet? Make one at <code>console.anthropic.com</code> &rarr; API keys &rarr; Create key,
+      and add some credit. Paste the whole thing, including <code>sk-ant-</code>.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Claude sign-in <span class="pill" id="cc-pill">checking…</span></h2>
+    <div class="why">Writes the <b>descriptions</b>, on your own Claude subscription (Pro or Max) - no API
+      charge. You sign in once, in your browser.</div>
+    <div class="row">
+      <button class="primary" id="btn-login">Sign in with Claude</button>
+      <button id="btn-login-test">Check sign-in</button>
+      <a class="btn small" id="get-claude" hidden>Get the Claude app</a>
+    </div>
+    <div class="note" id="cc-note"></div>
+    <div class="sign-in" id="sign-in" hidden>
+      <div>A Claude page has opened in your browser. Sign in there and press <b>Authorize</b> - this
+        page notices by itself when you are done.</div>
+      <div class="note">No page opened? <a id="sign-in-link" target="_blank" rel="noreferrer">Open the sign-in page</a>.
+        If it ends by showing a code, paste the code here:</div>
+      <div class="row">
+        <input type="text" id="sign-in-code" placeholder="Paste the code" autocomplete="off" spellcheck="false">
+        <button class="small" id="btn-sign-in-code">Continue</button>
+      </div>
+    </div>
+    <div class="note" id="cc-fallback" hidden>Still not working? <a href="#" id="btn-login-terminal">Use the sign-in
+      window instead</a> - type <code>/login</code> there, finish in the browser, then type <code>/exit</code>.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Chrome helper <span class="pill" id="ext-pill">checking…</span></h2>
+    <div class="why">Puts the photos and the description into Depop's form inside your own Chrome, so there is
+      no separate login and nothing for Depop to block.</div>
+    <ol id="ext-steps">
+      <li>Open a new tab at <code>chrome://extensions</code> and switch on <b>Developer mode</b> (top right).</li>
+      <li>Press <b>Copy</b> here, then click <b>Load unpacked</b>, paste into the <b>Folder</b> box at the
+        bottom of the window that opens, and press <b>Select Folder</b>:<br><code id="ext-dir"></code>
+        <button class="small" data-copy="ext-dir">Copy</button></li>
+      <li>Come back here and press <b>Reload</b>.</li>
+    </ol>
+    <div class="note" id="ext-note"></div>
+  </div>
+
+  <div class="panel" id="updates">
+    <h2>Updates <span class="pill" id="upd-pill">checking…</span></h2>
+    <div class="why">New versions of Depop Seller are published on GitHub. The app only looks when you
+      press the button. Updating replaces the app itself and reopens it - <b>your photos, listings,
+      style and key are never touched</b>.</div>
+    <div class="row">
+      <button id="btn-upd-check">Check for updates</button>
+      <button class="primary" id="btn-upd-install" hidden>Update now</button>
+      <a class="btn small" id="upd-page" target="_blank" rel="noreferrer" hidden>See it on GitHub</a>
+    </div>
+    <div class="note" id="upd-note"></div>
+    <div class="release-notes" id="upd-notes" hidden></div>
+  </div>
+
+  <div class="panel">
+    <h2>Give this app to someone</h2>
+    <div class="why">Send them this link - the page has a <b>Download</b> button and says what they need.
+      They use their own API key and their own Claude account; nothing of yours goes with it.</div>
+    <div class="row"><code id="share-link"></code><button class="small" data-copy="share-link">Copy</button></div>
+    <div class="row later">
+      <span class="note inline">No internet where they are? Make a zip of this copy instead:</span>
+      <button class="small" id="btn-share">Make a zip</button>
+      <span class="note" id="share-note"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Close the app</h2>
+    <div class="why">Closing the app window closes the app - nothing keeps running in the background.
+      If it is still grouping photos, writing a description or feeding the Depop helper, it stays up
+      until that finishes. This button stops it right now.</div>
+    <div class="row">
+      <button id="btn-quit">Close Depop Seller</button>
+      <span class="note" id="quit-note"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Your data folder</h2>
+    <div class="why">Everything of yours lives in one folder, separate from the app: your photos and
+      their grouping, your listings and descriptions, your style, your API key. <b>To use Depop Seller
+      on another computer, install the app there and copy this one folder across</b> - nothing else.</div>
+    <div class="row"><code id="data-dir"></code><button class="small" data-copy="data-dir">Copy</button></div>
+    <div class="note" id="data-note"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Where things are</h2>
+    <div class="why">Everything runs on this computer. Nothing is uploaded except the photos you group
+      (to Anthropic) and what you post yourself (to Depop).</div>
+    <table class="paths"><tbody id="paths"></tbody></table>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+let S = null;
+
+function syncTabs(active, batch, hasManifest) {
+  document.querySelectorAll('nav.tabs a').forEach(a => {
+    const tab = a.dataset.tab;
+    a.classList.toggle('active', tab === active);
+    if (tab === 'batches' || tab === 'style' || tab === 'settings') return;
+    a.href = (tab === 'review' ? '/' : '/sell') + (batch ? '?batch=' + encodeURIComponent(batch) : '');
+    a.classList.toggle('off', !batch || (tab === 'sell' && hasManifest === false));
+  });
+}
+
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const text = await res.text();
+  if (!res.ok) return { ok: false, error: text };
+  return { ok: true, data: text ? JSON.parse(text) : {} };
+}
+
+function pill(id, ok, text) { const p = $(id); p.className = 'pill ' + (ok ? 'ok' : 'no'); p.textContent = text; }
+function note(id, text, kind) { const n = $(id); n.className = 'note' + (kind ? ' ' + kind : ''); n.textContent = text || ''; }
+
+async function load() {
+  S = await (await fetch('/settings/state')).json();
+  const k = S.api_key;
+  $('env-file').textContent = k.env_file;
+  pill('key-pill', k.set, k.set ? 'set' : 'not set yet');
+  note('key-note', k.set ? `Using ${k.hint} from the ${k.source}.` : 'Grouping photos will not work until a key is saved.', k.set ? '' : 'err');
+  $('key-env').hidden = k.editable;
+  if (!k.editable) {
+    note('key-env', 'This computer sets ANTHROPIC_API_KEY as an environment variable, which wins over the file. Remove it there to manage the key here.', 'err');
+    $('btn-key-save').disabled = true;
+  }
+
+  const cc = S.claude_code;
+  pill('cc-pill', cc.found, cc.found ? 'checking…' : 'Claude app not found');
+  note('cc-note', cc.found ? '' : cc.hint, cc.found ? '' : 'err');
+  $('btn-login').disabled = !cc.found;
+  $('btn-login-test').disabled = !cc.found;
+  if (cc.found) checkSignIn(true);
+  $('share-link').textContent = S.project_page;
+  const get = $('get-claude');
+  get.hidden = cc.found;
+  get.href = cc.download || '#';
+  get.target = '_blank';
+  get.rel = 'noreferrer';
+
+  const ext = !!document.documentElement.dataset.depopSellerExt;
+  pill('ext-pill', ext, ext ? 'installed (v' + document.documentElement.dataset.depopSellerExt + ')' : 'not installed');
+  $('ext-steps').hidden = ext;
+  $('ext-dir').textContent = S.environment.extension_dir;
+  note('ext-note', ext ? 'The Depop button will add photos straight into Depop’s form.' : '', 'ok');
+
+  const e = S.environment;
+  $('data-dir').textContent = e.data_dir;
+  note('data-note', `${e.batches} batches, ${e.photos} photos, plus your listings and your style.`);
+  const rows = [
+    ['Photos', e.photos_dir + (e.photos_dir_override ? '   (set by DEPOP_SELLER_PRODUCT_DIR)' : ''), `${e.batches} batches, ${e.photos} photos`],
+    ['Listings', e.database, 'items, descriptions and what you have listed'],
+    ['Style', e.style_file, 'edited on the Style tab'],
+    ['App', e.project_dir, `${e.platform}, Python ${e.python}`],
+  ];
+  const body = $('paths');
+  body.innerHTML = '';
+  rows.forEach(([k, v, extra]) => {
+    const tr = el('tr');
+    tr.appendChild(el('td', 'k', k));
+    const td = el('td', 'v');
+    td.appendChild(el('div', null, v));
+    if (extra) td.appendChild(el('div', 'muted', extra));
+    tr.appendChild(td);
+    const b = el('td', 'b');
+    const copy = el('button', 'small', 'Copy');
+    copy.onclick = () => navigator.clipboard.writeText(v.split('   ')[0]).then(() => { copy.textContent = 'Copied'; setTimeout(() => copy.textContent = 'Copy', 1200); });
+    b.appendChild(copy);
+    tr.appendChild(b);
+    body.appendChild(tr);
+  });
+
+  const info = await (await fetch('/batches')).json();
+  const recent = info.batches[0];
+  syncTabs('settings', recent && recent.name, recent && recent.has_manifest);
+}
+
+document.querySelectorAll('[data-copy]').forEach(b => {
+  b.onclick = () => navigator.clipboard.writeText($(b.dataset.copy).textContent)
+    .then(() => { b.textContent = 'Copied'; setTimeout(() => b.textContent = 'Copy', 1200); });
+});
+
+$('btn-key-save').onclick = async () => {
+  const key = $('key').value.trim();
+  if (!key) { note('key-note', 'Paste the key first.', 'err'); return; }
+  const r = await post('/settings/key', { key });
+  $('key').value = '';
+  if (!r.ok) { note('key-note', r.error, 'err'); return; }
+  await load();
+  note('key-note', 'Saved. Testing it…');
+  await testKey();
+};
+
+async function testKey() {
+  $('btn-key-test').disabled = true;
+  note('key-note', 'Checking the key with Anthropic…');
+  const r = await post('/settings/key/test');
+  $('btn-key-test').disabled = false;
+  if (!r.ok) { note('key-note', r.error, 'err'); return; }
+  note('key-note', r.data.detail, r.data.ok ? 'ok' : 'err');
+  pill('key-pill', r.data.ok, r.data.ok ? 'working' : 'not working');
+}
+$('btn-key-test').onclick = testKey;
+
+// ---- Claude sign-in ---------------------------------------------------------------------
+// The server runs `claude auth login` with no window: the browser does the signing in, and this
+// page follows along. If no browser page opened, the link below opens one by hand, and that route
+// ends on a page with a code, which goes back to the sign-in through the box.
+async function checkSignIn(quiet) {
+  $('btn-login-test').disabled = true;
+  if (!quiet) note('cc-note', 'Asking Claude Code whether it is signed in…');
+  const r = await post('/settings/login/test');
+  $('btn-login-test').disabled = false;
+  if (!r.ok) { note('cc-note', r.error, 'err'); return; }
+  pill('cc-pill', r.data.ok, r.data.ok ? 'signed in' + (r.data.plan ? ` (${r.data.plan})` : '') : 'not signed in');
+  if (!quiet || !r.data.ok) note('cc-note', r.data.detail, r.data.ok ? 'ok' : 'err');
+}
+$('btn-login-test').onclick = () => checkSignIn(false);
+
+$('btn-login').onclick = async () => {
+  $('btn-login').disabled = true;
+  note('cc-note', 'Opening the Claude sign-in page in your browser…');
+  const r = await post('/settings/login');
+  if (!r.ok) { $('btn-login').disabled = false; note('cc-note', r.error, 'err'); return; }
+  note('cc-note', '');
+  $('sign-in').hidden = false;
+  followSignIn();
+};
+
+async function followSignIn() {
+  let s = null;
+  try { s = await (await fetch('/settings/login/status', { cache: 'no-store' })).json(); }
+  catch (e) { setTimeout(followSignIn, 2000); return; }
+  if (s.url) $('sign-in-link').href = s.url;
+  if (s.running) { setTimeout(followSignIn, 1500); return; }
+  $('sign-in').hidden = true;
+  $('btn-login').disabled = false;
+  pill('cc-pill', !!s.ok, s.ok ? 'signed in' : 'not signed in');
+  note('cc-note', s.detail, s.ok ? 'ok' : 'err');
+  $('cc-fallback').hidden = !!s.ok;
+  if (s.ok) checkSignIn(true);
+}
+
+$('btn-sign-in-code').onclick = async () => {
+  const code = $('sign-in-code').value.trim();
+  if (!code) { $('sign-in-code').focus(); return; }
+  const r = await post('/settings/login/code', { code });
+  $('sign-in-code').value = '';
+  note('cc-note', r.ok ? 'Checking the code…' : r.error, r.ok ? '' : 'err');
+};
+
+$('btn-login-terminal').onclick = async (e) => {
+  e.preventDefault();
+  const r = await post('/settings/login/terminal');
+  note('cc-note', r.ok ? 'The sign-in window is open. When you have typed /exit there, press Check sign-in.' : r.error, r.ok ? '' : 'err');
+};
+
+$('btn-share').onclick = async () => {
+  $('btn-share').disabled = true;
+  note('share-note', 'Packing…');
+  const r = await post('/settings/share');
+  $('btn-share').disabled = false;
+  if (!r.ok) { note('share-note', r.error, 'err'); return; }
+  note('share-note', `Saved to your Desktop: ${r.data.path.split(/[\\/]/).pop()} (${r.data.kb} KB). Send it however you like.`, 'ok');
+};
+
+// ---- updates ------------------------------------------------------------------------------
+// Checking asks GitHub only when the button is pressed. Installing runs on the server; on Windows
+// a fresh copy of the app then starts in its place, and this page waits for it (a new process id
+// behind /version) and reloads. Elsewhere the app closes and is opened again by hand.
+let RUNNING = null;                    // /version of the copy this page was loaded from
+let LATEST = null;
+
+async function loadVersion() {
+  try { RUNNING = await (await fetch('/version', { cache: 'no-store' })).json(); } catch (e) { return; }
+  const p = $('upd-pill');
+  p.className = 'pill';
+  p.textContent = 'version ' + (RUNNING.version || '?');
+  const updated = new URLSearchParams(location.search).get('updated');
+  if (updated) {
+    history.replaceState(null, '', '/settings');
+    if (updated === RUNNING.version) {
+      pill('upd-pill', true, 'version ' + updated);
+      note('upd-note', `Updated to version ${updated}. Everything of yours is just as you left it.`, 'ok');
+    }
+  }
+}
+
+function updateButtons(busy) {
+  $('btn-upd-check').disabled = busy;
+  $('btn-upd-install').disabled = busy;
+}
+
+$('btn-upd-check').onclick = async () => {
+  updateButtons(true);
+  $('btn-upd-install').hidden = true;
+  $('upd-notes').hidden = true;
+  $('upd-page').hidden = true;
+  note('upd-note', 'Asking GitHub for the newest version…');
+  const r = await post('/updates/check');
+  updateButtons(false);
+  if (!r.ok) { note('upd-note', r.error, 'err'); return; }
+  const u = r.data;
+  if (!u.ok) { note('upd-note', u.reason, 'err'); return; }
+  if (!u.newer) {
+    pill('upd-pill', true, 'up to date');
+    note('upd-note', `You have the newest version (${u.current}).`, 'ok');
+    return;
+  }
+  LATEST = u.latest;
+  const p = $('upd-pill');
+  p.className = 'pill todo';
+  p.textContent = 'update available';
+  note('upd-note', `Version ${u.latest} is available` + (u.published ? ` (published ${u.published})` : '') + ` - you have ${u.current}.`);
+  if (u.notes) { $('upd-notes').textContent = u.notes; $('upd-notes').hidden = false; }
+  $('upd-page').href = u.page;
+  $('upd-page').hidden = false;
+  if (u.can_install) {
+    $('btn-upd-install').textContent = `Update to ${u.latest}`;
+    $('btn-upd-install').hidden = false;
+  } else {
+    note('upd-note', `Version ${u.latest} is available. ${u.why_not}`, 'warn');
+  }
+};
+
+$('btn-upd-install').onclick = async () => {
+  if (!confirm(`Update Depop Seller to version ${LATEST}?\n\nYour photos, listings, style and key stay exactly as they are. The app closes for a few seconds and reopens by itself.`)) return;
+  updateButtons(true);
+  note('upd-note', 'Starting the update…');
+  const r = await post('/updates/install');
+  if (!r.ok) { updateButtons(false); note('upd-note', r.error, 'err'); return; }
+  followUpdate();
+};
+
+async function followUpdate() {
+  let job = null;
+  try { job = await (await fetch('/updates/status', { cache: 'no-store' })).json(); }
+  catch (e) { /* the old copy has already stopped: the new one is on its way */ }
+  if (job && job.running) {
+    note('upd-note', (job.phase || 'Working') + '…');
+    setTimeout(followUpdate, 700);
+    return;
+  }
+  if (job && job.error) { updateButtons(false); note('upd-note', job.error, 'err'); return; }
+  if (job && job.restart === 'manual') {
+    document.body.innerHTML = '<div style="padding:60px;text-align:center;font:16px system-ui;color:#71717a">'
+      + `Depop Seller is updated to version ${job.installed} and has closed.<br><br>Open it again from the Dock or the folder.</div>`;
+    return;
+  }
+  note('upd-note', `Version ${job ? job.installed : LATEST} is installed - reopening…`);
+  waitForNewCopy(Date.now());
+}
+
+async function waitForNewCopy(since) {
+  try {
+    const v = await (await fetch('/version', { cache: 'no-store' })).json();
+    if (RUNNING && v.pid !== RUNNING.pid) { location.href = '/settings?updated=' + encodeURIComponent(v.version); return; }
+  } catch (e) { /* between the old copy stopping and the new one starting */ }
+  if (Date.now() - since > 60000) {
+    note('upd-note', 'The update is installed, but the app did not reopen by itself. Open Depop Seller again from the desktop icon.', 'err');
+    return;
+  }
+  setTimeout(() => waitForNewCopy(since), 1000);
+}
+
+$('btn-quit').onclick = async () => {
+  if (!confirm('Close Depop Seller?\n\nEverything is already saved. Open it again from the desktop icon whenever you like.')) return;
+  await post('/quit');
+  document.body.innerHTML = '<div style="padding:60px;text-align:center;font:16px system-ui;color:#71717a">'
+    + 'Depop Seller is closed.<br><br>You can close this window - open it again from the desktop icon.</div>';
+};
+
+$('btn-reload').onclick = load;
+load();
+loadVersion();
+
+// ---- closing the window closes the app ----------------------------------------------
+// Moving between tabs also unloads the page, so the server waits a few seconds and stays up if
+// another page of the app turns up, or if it is still grouping, drafting or feeding Depop.
+window.addEventListener('pagehide', (e) => {
+  if (!e.persisted) navigator.sendBeacon('/closing');
+});
+
+// ---- the app was updated while it was running ---------------------------------------
+// The pages come from disk on every request, but the routes live in the running process: after an
+// update you can be looking at a new page that the old server cannot serve. A server old enough to
+// have no /version at all is stale by definition, so a 404 here counts as "restart me" too.
+async function checkVersion() {
+  let stale = false, since = '', platform = '';
+  try {
+    const res = await fetch('/version');
+    if (res.ok) { const v = await res.json(); stale = v.stale; since = v.started; platform = v.platform; }
+    else { stale = true; }
+  } catch (e) { return; }                       // server gone: the page has bigger problems
+  if (!stale) return;
+
+  const reopen = platform === 'mac'
+    ? 'open Depop Seller again from the Dock or the folder'
+    : 'open Depop Seller again from your desktop icon';
+  const b = document.getElementById('stale-banner');
+  b.textContent = '';
+  const msg = document.createElement('span');
+  msg.textContent = 'Depop Seller has been updated'
+    + (since ? ` (this one has been running since ${since})` : '')
+    + '. Close it and open it again, or the newest tabs and buttons will not work.';
+  const btn = document.createElement('button');
+  btn.textContent = 'Close it now';
+  btn.style.cssText = 'font:inherit;padding:3px 10px;border:1px solid #fcd34d;border-radius:6px;background:#fff;cursor:pointer';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { await fetch('/quit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
+    catch (e) { /* the server dies mid-answer, which is the point */ }
+    document.body.innerHTML = '<div style="padding:60px;text-align:center;font:16px system-ui;color:#71717a">'
+      + 'Depop Seller is closed.<br><br>Now ' + reopen + '.</div>';
+  };
+  b.append(msg, btn);
+  b.hidden = false;
+}
+checkVersion();
+</script>
+</body>
+</html>

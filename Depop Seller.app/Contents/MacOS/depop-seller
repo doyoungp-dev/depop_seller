@@ -1,0 +1,69 @@
+#!/bin/bash
+# Depop Seller, macOS launcher - and, the first time, the installer.
+#
+# Double-click this app in Finder. If the app has not been set up on this Mac yet it sets itself
+# up (about a minute), then opens; after that it just opens. There is no Terminal window at any
+# point, and nothing else to double-click.
+#
+# Normally the bundle sits in the project folder and finds it by walking up out of
+# Depop Seller.app/Contents/MacOS. Copy the app to the Desktop, the Dock or /Applications and it
+# falls back to the path setup.sh recorded, so it still works from anywhere.
+set -u
+
+LOG="$HOME/Library/Logs/Depop Seller.log"
+RECORDED="$HOME/Library/Application Support/Depop Seller/project-path"
+mkdir -p "$(dirname "$LOG")"
+
+fail() {
+    /usr/bin/osascript -e "display dialog \"$1\" buttons {\"OK\"} default button 1 with icon caution with title \"Depop Seller\"" >/dev/null 2>&1
+    exit 1
+}
+
+note() {
+    /usr/bin/osascript -e "display notification \"$1\" with title \"Depop Seller\"" >/dev/null 2>&1
+}
+
+HERE="$(cd "$(dirname "$0")/../../.." 2>/dev/null && pwd)"
+if [ ! -x "${HERE:-/nowhere}/.venv/bin/python" ] && [ -f "$RECORDED" ]; then
+    HERE="$(cat "$RECORDED")"
+fi
+[ -n "${HERE:-}" ] && cd "$HERE" 2>/dev/null || fail "Could not find the depop_seller folder.\n\nKeep this app inside the folder you unzipped."
+
+exec >>"$LOG" 2>&1
+echo "--- $(date '+%Y-%m-%d %H:%M:%S') starting in $HERE"
+
+# ---------------------------------------------------------------- first run: set ourselves up
+if [ ! -x ".venv/bin/python" ]; then
+    echo "no .venv yet - running setup"
+    PY=""
+    for candidate in python3.14 python3.13 python3.12 python3; do
+        if command -v "$candidate" >/dev/null 2>&1 &&
+           "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)'; then
+            PY="$candidate"
+            break
+        fi
+    done
+    if [ -z "$PY" ]; then
+        /usr/bin/osascript -e 'display dialog "Depop Seller needs Python 3.12 or newer, which this Mac does not have yet.\n\nI will open the download page: get the macOS installer, run it with the default options, then double-click Depop Seller again." buttons {"Open the page", "Cancel"} default button 1 with title "Depop Seller"' >/dev/null 2>&1 \
+            && open "https://www.python.org/downloads/"
+        exit 1
+    fi
+    note "Setting up - this takes a minute or two."
+    if ! bash setup.sh; then
+        fail "Setup did not finish.\n\nThe details are in:\n$LOG"
+    fi
+    note "Ready - opening Depop Seller."
+fi
+
+[ -x ".venv/bin/python" ] || fail "Setup has not finished.\n\nThe details are in:\n$LOG"
+
+DEPOP_QUIET=1 .venv/bin/python -m depop_seller hub &
+PID=$!
+trap 'kill "$PID" 2>/dev/null' TERM INT     # Cmd+Q in the dock stops the server
+wait "$PID"
+status=$?
+
+case "$status" in
+    0|130|143) ;;                            # normal exit, Ctrl+C, or quit from the dock
+    *) fail "Depop Seller stopped unexpectedly (exit $status).\n\nThe log is at:\n$LOG" ;;
+esac

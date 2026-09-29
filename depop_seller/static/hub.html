@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Depop Seller</title>
+<link rel="icon" href="/icon.png">
+<link rel="stylesheet" href="/app.css">
+<style>
+  main { max-width: 1060px; margin: 0 auto; }
+  #new-name { width: 250px; }
+  .batch {
+    display: grid; grid-template-columns: 108px 1fr auto; gap: 20px; align-items: center;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 18px 14px 14px; margin-bottom: 12px; box-shadow: var(--shadow);
+    transition: box-shadow .2s, transform .2s, border-color .2s, background .2s;
+  }
+  .batch:hover { box-shadow: var(--shadow-lift); transform: translateY(-1px); }
+  .batch.drop { border-color: var(--primary); background: var(--primary-soft); }
+  .batch .cover { width: 108px; height: 108px; border-radius: 13px; object-fit: cover; background: var(--surface-3); display: block; }
+  .batch .cover.empty {
+    display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px;
+    font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1.5px dashed var(--line-strong);
+  }
+  .batch h3 { margin: 0 0 4px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font: 600 20px/1.3 var(--font-display); }
+  .batch .tools { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .batch .tools-main { display: flex; gap: 8px; }
+  .batch .tools-main:empty { display: none; }
+  .batch .tools-main .btn, .batch .tools-main button { padding: 9px 20px; }
+  .batch .tools-more { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; }
+  .batch .tools-more button {
+    background: transparent; border-color: transparent; box-shadow: none;
+    color: var(--muted); padding: 4px 10px; font-size: 12.5px;
+  }
+  .batch .tools-more button:hover { background: var(--surface-3); color: var(--text); border-color: transparent; }
+</style>
+</head>
+<body>
+<div id="stale-banner" hidden></div>
+<header class="bar">
+  <a class="brand" href="/hub"><img src="/icon.png" alt=""> Depop Seller</a>
+  <nav class="tabs">
+    <a href="/hub" data-tab="batches">Batches</a>
+    <a href="/" data-tab="review">Review</a>
+    <a href="/sell" data-tab="sell">Sell</a>
+    <a href="/style" data-tab="style">Style</a>
+    <a href="/settings" data-tab="settings">Settings</a>
+  </nav>
+  <div class="actions"><span id="status" class="muted"></span><button id="btn-reload">Reload</button></div>
+</header>
+<main>
+  <div class="panel">
+    <h2>New batch</h2>
+    <div class="muted">Call it whatever you like - a date, <i>Autumn knits</i>, <i>Sunday haul</i>. Photos live in
+      <code id="root"></code>, one folder per batch; the photos themselves are never changed.</div>
+    <p class="row" style="margin:10px 0 0">
+      <input type="text" id="new-name" placeholder="Batch name" style="width:220px">
+      <button class="primary" id="btn-new">Create batch</button>
+      <span id="new-status" class="muted"></span>
+    </p>
+    <div class="dropzone" id="new-drop" style="margin-top:10px">
+      Drop photos here to create a batch with them &middot; or use <b>Add photos</b> on a batch below
+    </div>
+  </div>
+  <div id="batches"></div>
+</main>
+<input type="file" id="file-input" multiple accept=".heic,.heif,.jpg,.jpeg,.png,.webp" hidden>
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const PHOTO_RE = /\.(heic|heif|jpe?g|png|webp)$/i;
+let INFO = null;
+
+function today() { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; }
+function say(text, isError) { const s = $('status'); s.textContent = text || ''; s.className = isError ? 'note err' : 'muted'; }
+
+async function post(path, body) {
+  const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const text = await res.text();
+  if (!res.ok) { say(text, true); return null; }
+  say('');
+  return text ? JSON.parse(text) : {};
+}
+
+
+// ---- one app, three tabs -----------------------------------------------------------
+function syncTabs(active, batch, hasManifest) {
+  document.querySelectorAll('nav.tabs a').forEach(a => {
+    const tab = a.dataset.tab;
+    a.classList.toggle('active', tab === active);
+    if (tab === 'batches' || tab === 'style' || tab === 'settings') return;
+    a.href = (tab === 'review' ? '/' : '/sell') + (batch ? '?batch=' + encodeURIComponent(batch) : '');
+    a.classList.toggle('off', !batch || (tab === 'sell' && hasManifest === false));
+  });
+}
+
+async function load() {
+  INFO = await (await fetch('/batches')).json();
+  const recent = INFO.batches[0];
+  syncTabs('batches', recent && recent.name, recent && recent.has_manifest);
+  $('root').textContent = INFO.product_image_dir || 'product_image';
+  const box = $('batches');
+  box.innerHTML = '';
+  if (!INFO.batches.length) {
+    box.appendChild(el('div', 'panel muted', 'No batches yet. Name one above, create it, then drop your photos on it.'));
+    return;
+  }
+  INFO.batches.forEach(b => box.appendChild(batchCard(b)));
+}
+
+function batchCard(b) {
+  const card = el('section', 'batch');
+  card.id = 'batch-' + encodeURIComponent(b.name);
+
+  if (b.photos) {
+    const img = el('img', 'cover');
+    img.loading = 'lazy';
+    img.alt = '';
+    img.src = '/batches/cover?batch=' + encodeURIComponent(b.name);
+    card.appendChild(img);
+  } else {
+    card.appendChild(el('div', 'cover empty', 'no photos yet'));
+  }
+
+  const mid = el('div');
+  const h = el('h3');
+  h.appendChild(el('span', null, b.name));
+  h.appendChild(el('span', 'pill ' + (b.has_manifest ? 'ready' : 'todo'),
+                   b.has_manifest ? 'grouped' : b.photos ? 'not grouped yet' : 'no photos'));
+  mid.appendChild(h);
+  const bits = [`${b.photos} photo${b.photos === 1 ? '' : 's'}`];
+  if (b.has_manifest) bits.push(`${b.items} items`, `${b.listed} listed`);
+  bits.push('updated ' + b.updated);
+  mid.appendChild(el('div', 'muted', bits.join('  ·  ')));
+  const track = el('div', 'bar-track'); track.hidden = true;
+  const fill = el('div', 'bar-fill');
+  track.appendChild(fill);
+  const note = el('div', 'note');
+  mid.append(track, note);
+  if (b.error) { note.className = 'note err'; note.textContent = b.error; }
+  card.appendChild(mid);
+
+  // the next step for this batch is the big button; housekeeping sits quietly underneath
+  const tools = el('div', 'tools');
+  const main = el('div', 'tools-main');
+  const more = el('div', 'tools-more');
+
+  const add = el('button', b.photos ? '' : 'primary', 'Add photos');
+  add.onclick = () => pickFiles(b.name);
+  if (!b.photos) main.appendChild(add); else more.appendChild(add);
+  if (b.photos && !b.has_manifest) {
+    const group = el('button', 'primary', `Group with Claude (about $${cost(b.photos)})`);
+    group.onclick = () => startGroup(b, group, track, fill, note);
+    main.appendChild(group);
+  }
+  if (b.has_manifest) {
+    const rev = el('a', 'btn', 'Review'); rev.href = '/?batch=' + encodeURIComponent(b.name);
+    const sell = el('a', 'btn sell', 'Sell'); sell.href = '/sell?batch=' + encodeURIComponent(b.name);
+    main.append(rev, sell);
+  }
+  const fromFolder = el('button', '', 'Import folder…');
+  fromFolder.onclick = () => importFolder(b, note);
+  const rename = el('button', '', 'Rename');
+  rename.onclick = () => renameBatch(b);
+  const open = el('button', '', 'Open folder');
+  open.onclick = () => post('/batches/open', { name: b.name });
+  more.append(fromFolder, rename, open);
+  tools.append(main, more);
+  card.appendChild(tools);
+
+  bindDrop(card, b.name, note);
+  return card;
+}
+
+function cost(photos) {
+  const per = (INFO.cost_per_photo || {})[INFO.default_model] || 0.004;
+  return (photos * per).toFixed(2);
+}
+
+// ---- photos in ---------------------------------------------------------------------
+
+let pendingBatch = null;
+function pickFiles(batch) { pendingBatch = batch; $('file-input').value = ''; $('file-input').click(); }
+$('file-input').onchange = () => { if (pendingBatch) upload(pendingBatch, $('file-input').files); };
+
+function bindDrop(node, batch, note) {
+  node.addEventListener('dragover', (e) => {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    node.classList.add(node === $('new-drop') ? 'over' : 'drop');
+  });
+  node.addEventListener('dragleave', (e) => { if (!node.contains(e.relatedTarget)) node.classList.remove('drop', 'over'); });
+  node.addEventListener('drop', async (e) => {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    node.classList.remove('drop', 'over');
+    const files = e.dataTransfer.files;
+    if (!files.length) return;
+    let target = batch;
+    if (target === null) {                       // dropped on the "new batch" zone
+      const name = ($('new-name').value || '').trim() || today();
+      const made = await post('/batches/new', { name });
+      if (!made) return;
+      await load();
+      target = made.name;
+    }
+    await upload(target, files, note);
+  });
+}
+
+async function upload(batch, fileList, note) {
+  const files = [...fileList].filter(f => PHOTO_RE.test(f.name));
+  const ignored = fileList.length - files.length;
+  const card = document.getElementById('batch-' + encodeURIComponent(batch));
+  note = note || (card && card.querySelector('.note'));
+  const track = card && card.querySelector('.bar-track');
+  const fill = card && card.querySelector('.bar-fill');
+  if (!files.length) { if (note) { note.className = 'note err'; note.textContent = 'No photos in what you dropped (HEIC, JPEG, PNG or WEBP).'; } return; }
+  if (track) track.hidden = false;
+
+  let done = 0, added = 0, skipped = 0, failed = 0;
+  const show = () => {
+    if (fill) fill.style.width = `${Math.round(done / files.length * 100)}%`;
+    if (note) { note.className = 'note'; note.textContent = `Copying ${done} / ${files.length}…`; }
+  };
+  show();
+
+  const queue = files.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const f = queue.shift();
+      try {
+        const res = await fetch(`/batches/photos?batch=${encodeURIComponent(batch)}&name=${encodeURIComponent(f.name)}`,
+                                { method: 'POST', body: f });
+        if (!res.ok) { failed++; } else { (await res.json()).written ? added++ : skipped++; }
+      } catch (e) { failed++; }
+      done++;
+      show();
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);     // three at a time keeps localhost busy
+
+  await load();
+  const fresh = document.getElementById('batch-' + encodeURIComponent(batch));
+  const msg = fresh && fresh.querySelector('.note');
+  if (msg) {
+    const parts = [`${added} photo${added === 1 ? '' : 's'} added`];
+    if (skipped) parts.push(`${skipped} already in the batch`);
+    if (ignored) parts.push(`${ignored} not a photo`);
+    if (failed) parts.push(`${failed} failed`);
+    msg.className = failed ? 'note err' : 'note';
+    msg.textContent = parts.join(' · ');
+    const b = INFO.batches.find(x => x.name === batch);
+    if (added && b && b.has_manifest) {
+      msg.className = 'note warn';
+      msg.textContent += ' - this batch is already grouped, so the new photos are not in it yet.';
+    }
+  }
+}
+
+async function importFolder(b, note) {
+  const folder = prompt(`Copy every photo from a folder on this computer into "${b.name}".\n\nPaste the folder's full path:`);
+  if (!folder) return;
+  note.className = 'note';
+  note.textContent = 'Copying…';
+  const r = await post('/batches/import?batch=' + encodeURIComponent(b.name), { folder });
+  if (!r) { note.className = 'note err'; note.textContent = 'Could not import - see the message in the header.'; return; }
+  await load();
+  const fresh = document.getElementById('batch-' + encodeURIComponent(b.name));
+  const msg = fresh && fresh.querySelector('.note');
+  if (msg) msg.textContent = `${r.copied} photo(s) copied from ${r.from}` + (r.skipped ? `, ${r.skipped} already there` : '');
+}
+
+// ---- grouping ----------------------------------------------------------------------
+
+async function startGroup(b, button, track, fill, note) {
+  if (!INFO.api_key) {
+    note.className = 'note err';
+    note.textContent = 'No API key: put ANTHROPIC_API_KEY=sk-ant-... in the .env file and restart.';
+    return;
+  }
+  if (!confirm(`Group ${b.photos} photos of "${b.name}" into items with Claude?\n\nThis calls the Anthropic API and costs about $${cost(b.photos)}.`)) return;
+  button.disabled = true;
+  track.hidden = false;
+  note.className = 'note';
+  note.textContent = 'Starting…';
+  if (!await post('/group?batch=' + encodeURIComponent(b.name), { model: INFO.default_model })) { button.disabled = false; return; }
+  pollGroup(b.name, button, fill, note);
+}
+
+async function pollGroup(name, button, fill, note) {
+  const st = await (await fetch('/group/status?batch=' + encodeURIComponent(name))).json();
+  if (st.total) fill.style.width = `${Math.round(st.done / st.total * 100)}%`;
+  if (st.running) {
+    note.textContent = `${st.phase}${st.total ? ` ${st.done} / ${st.total}` : ''}…`;
+    setTimeout(() => pollGroup(name, button, fill, note), 1500);
+    return;
+  }
+  if (st.error) { note.className = 'note err'; note.textContent = 'Grouping failed: ' + st.error; button.disabled = false; return; }
+  note.textContent = 'Grouped' + (st.cost ? ` (about $${st.cost.toFixed(2)})` : '') + ' - opening the review page…';
+  location.href = '/?batch=' + encodeURIComponent(name);
+}
+
+// ---- naming ------------------------------------------------------------------------
+
+async function renameBatch(b) {
+  const to = prompt(`Rename "${b.name}" to:`, b.name);
+  if (!to || to === b.name) return;
+  if (await post('/batches/rename', { name: b.name, to })) await load();
+}
+
+$('btn-new').onclick = async () => {
+  const name = ($('new-name').value || '').trim();
+  if (!name) { $('new-status').textContent = 'Type a name first.'; return; }
+  const made = await post('/batches/new', { name });
+  if (!made) { $('new-status').textContent = ''; return; }
+  $('new-status').textContent = 'Created - now add its photos.';
+  $('new-name').value = '';
+  await load();
+  pickFiles(made.name);
+};
+$('btn-reload').onclick = load;
+bindDrop($('new-drop'), null, null);
+$('new-name').placeholder = today();
+load();
+
+// ---- closing the window closes the app ----------------------------------------------
+// Moving between tabs also unloads the page, so the server waits a few seconds and stays up if
+// another page of the app turns up, or if it is still grouping, drafting or feeding Depop.
+window.addEventListener('pagehide', (e) => {
+  if (!e.persisted) navigator.sendBeacon('/closing');
+});
+
+// ---- the app was updated while it was running ---------------------------------------
+// The pages come from disk on every request, but the routes live in the running process: after an
+// update you can be looking at a new page that the old server cannot serve. A server old enough to
+// have no /version at all is stale by definition, so a 404 here counts as "restart me" too.
+async function checkVersion() {
+  let stale = false, since = '', platform = '';
+  try {
+    const res = await fetch('/version');
+    if (res.ok) { const v = await res.json(); stale = v.stale; since = v.started; platform = v.platform; }
+    else { stale = true; }
+  } catch (e) { return; }                       // server gone: the page has bigger problems
+  if (!stale) return;
+
+  const reopen = platform === 'mac'
+    ? 'open Depop Seller again from the Dock or the folder'
+    : 'open Depop Seller again from your desktop icon';
+  const b = document.getElementById('stale-banner');
+  b.textContent = '';
+  const msg = document.createElement('span');
+  msg.textContent = 'Depop Seller has been updated'
+    + (since ? ` (this one has been running since ${since})` : '')
+    + '. Close it and open it again, or the newest tabs and buttons will not work.';
+  const btn = document.createElement('button');
+  btn.textContent = 'Close it now';
+  btn.style.cssText = 'font:inherit;padding:3px 10px;border:1px solid #fcd34d;border-radius:6px;background:#fff;cursor:pointer';
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try { await fetch('/quit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); }
+    catch (e) { /* the server dies mid-answer, which is the point */ }
+    document.body.innerHTML = '<div style="padding:60px;text-align:center;font:16px system-ui;color:#71717a">'
+      + 'Depop Seller is closed.<br><br>Now ' + reopen + '.</div>';
+  };
+  b.append(msg, btn);
+  b.hidden = false;
+}
+checkVersion();
+</script>
+</body>
+</html>
